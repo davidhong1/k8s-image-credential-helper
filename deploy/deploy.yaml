@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8simagecredentialhelper
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8simagecredentialhelper
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - "namespaces"
+  - "events"
+  - "secrets"
+  - "serviceaccounts"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - "secrets"
+  verbs:
+  - "create"
+  - "update"
+  - "patch"
+- apiGroups:
+  - ""
+  resources:
+  - "serviceaccounts"
+  verbs:
+  - "patch"
+  - "update"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8simagecredentialhelper
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: k8simagecredentialhelper
+roleRef:
+  kind: ClusterRole
+  name: k8simagecredentialhelper
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8simagecredentialhelper
+  namespace: k8simagecredentialhelper
+spec:
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    service: k8simagecredentialhelper
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: k8simagecredentialhelper
+  name: k8simagecredentialhelper
+  namespace: k8simagecredentialhelper
+spec:
+  minReadySeconds: 60
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      service: k8simagecredentialhelper
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        service: k8simagecredentialhelper
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - env:
+        - name: INIT_CONFIG
+          value: environment
+        - name: HTTP_HEALTH_CHECK_PORT
+          value: "8080"
+        - name: IMAGE_PROVIDER 
+          value: harbor
+        - name: IMAGE_HOST
+          value: myharbor.io
+        - name: IMAGE_USER
+          value: xxx
+        - name: IMAGE_PASSWORD
+          value: xxx
+        image: davidhong1/k8simagecredentialhelper:main # TODO
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            httpHeaders:
+            - name: X-Custom-Header
+              value: Awesome
+            path: /pong
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 3
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: main
+        resources:
+          limits:
+            cpu: "1"
+            memory: 400Mi
+          requests:
+            cpu: 200m
+            memory: 200Mi
+      dnsPolicy: ClusterFirst
+      enableServiceLinks: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      shareProcessNamespace: false
+      terminationGracePeriodSeconds: 30
