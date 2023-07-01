@@ -1,6 +1,6 @@
 module github.com/davidhong1/k8s-image-credential-helper
 
-go 1.19
+go 1.20
 
 require (
 	github.com/golang/glog v1.1.1
