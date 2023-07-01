@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -17,20 +18,20 @@ import (
 )
 
 type NamespaceWatcher struct {
-	clientset *kubernetes.Clientset
-
-	imageCredentialInfo *conf.ImageCredentialInfo
-
+	clientset            *kubernetes.Clientset
+	imageCredentialInfo  *conf.ImageCredentialInfo
 	exitingNamespacesMap sync.Map
+
+	ForceUpdateSecret bool
 }
 
-func InitNamespaceWatcher(ctx context.Context, ici *conf.ImageCredentialInfo) (*NamespaceWatcher, error) {
-	config, err := rest.InClusterConfig()
+func InitNamespaceWatcher(ctx context.Context, config *conf.Config) (*NamespaceWatcher, error) {
+	clusterConfig, err := rest.InClusterConfig()
 	if err != nil {
 		glog.Error(err)
 		return nil, errors.Wrap(err, "")
 	}
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(clusterConfig)
 	if err != nil {
 		glog.Error(err)
 		return nil, errors.Wrap(err, "")
@@ -38,62 +39,59 @@ func InitNamespaceWatcher(ctx context.Context, ici *conf.ImageCredentialInfo) (*
 
 	return &NamespaceWatcher{
 		clientset:            clientset,
-		imageCredentialInfo:  ici,
+		imageCredentialInfo:  config.ImageCredentialInfo,
 		exitingNamespacesMap: sync.Map{},
+		ForceUpdateSecret:    config.ForceUpdateSecret,
 	}, nil
 }
 
 func (k *NamespaceWatcher) Watch(ctx context.Context) error {
+	if err := k.validate(); err != nil {
+		glog.Error(err)
+		// TODO 检查 errors wrap 情况
+		return errors.Wrapf(err, "")
+	}
+
 	watcher, err := k.clientset.CoreV1().Namespaces().Watch(ctx, metav1.ListOptions{})
 	if err != nil {
 		glog.Error(err)
-		return errors.Wrap(err, "")
+		return errors.Wrapf(err, "")
 	}
+	defer watcher.Stop()
 
-	go func() {
-		for event := range watcher.ResultChan() {
-			glog.Infof("Watch namespace event type: %v", event.Type)
+	for event := range watcher.ResultChan() {
+		glog.Infof("Watch namespace event type: %v", event.Type)
 
-			switch obj := event.Object.(type) {
-			case *v1.Namespace:
-				namespace := event.Object.(*v1.Namespace)
+		switch event.Object.(type) {
+		case *v1.Namespace:
+			namespace := event.Object.(*v1.Namespace)
 
-				switch event.Type {
-				case watch.Added:
-					if !k.isWatchNamespace(namespace.Name) {
-						glog.Infof("Watch namespace %s created, it not in watch namespaces, will ignore", namespace.Name)
-						break
-					}
-
-					// 检查是否已处理过，如果已处理，则忽略
-					if _, ok := k.exitingNamespacesMap.Load(namespace.Name); ok {
-						glog.Infof("Watch namespace %s created, it in exitingNamespacesMap, will ignore", namespace.Name)
-						break
-					}
-					k.exitingNamespacesMap.Store(namespace.Name, namespace.Name)
-
-					glog.Infof("Watch namespace %s created, will create  credential", namespace.Name)
-					err := k.createCredential(context.Background(), namespace.Name)
-					if err != nil {
-						glog.Error(err)
-						// TODO 发送通知
-					}
-				case watch.Deleted:
-					glog.Infof("Watch namespace %s deleted", namespace.Name)
-					k.exitingNamespacesMap.Delete(namespace.Name)
+			switch event.Type {
+			case watch.Added:
+				if !k.isWatchNamespace(namespace.Name) {
+					glog.Infof("Watch namespace %s created, it not in watch namespaces, will ignore", namespace.Name)
+					break
 				}
-			default:
-				glog.Error("Watch namespace unsupported event object: %T", obj)
+
+				// 检查是否已处理过，如果已处理，则忽略
+				if _, ok := k.exitingNamespacesMap.Load(namespace.Name); ok {
+					glog.Infof("Watch namespace %s created, it in exitingNamespacesMap, will ignore", namespace.Name)
+					break
+				}
+				k.exitingNamespacesMap.Store(namespace.Name, namespace.Name)
+
+				glog.Infof("Watch namespace %s created, will create  credential", namespace.Name)
+				err := k.createCredential(ctx, namespace.Name)
+				if err != nil {
+					glog.Error(err)
+					// TODO 发送通知
+				}
+			case watch.Deleted:
+				glog.Infof("Watch namespace %s deleted", namespace.Name)
+				k.exitingNamespacesMap.Delete(namespace.Name)
 			}
 		}
-
-		glog.Info("Watch namespace, watcher.ResultChan is closed, start new watcher")
-		err := k.Watch(context.Background())
-		if err != nil {
-			glog.Errorf("Watch namespace, start new watcher failed. err: %v", err)
-			// TODO 发送通知
-		}
-	}()
+	}
 
 	return nil
 }
@@ -133,17 +131,31 @@ func (k *NamespaceWatcher) createSecret(ctx context.Context, ns string) error {
 		return errors.Wrap(err, "")
 	}
 
-	for _, v := range resp.Items {
-		if v.Name == k.imageCredentialInfo.SecretName {
-			// 已存在，直接返回
-			return nil
-		}
-	}
-
 	bs, err := dockerConfigJsonKeyBytes(k.imageCredentialInfo.Host, k.imageCredentialInfo.User, k.imageCredentialInfo.Password, k.imageCredentialInfo.Email)
 	if err != nil {
 		glog.Error(err)
 		return errors.Wrap(err, "")
+	}
+
+	for _, v := range resp.Items {
+		if v.Name == k.imageCredentialInfo.SecretName {
+			if k.ForceUpdateSecret {
+				secret, err := k.clientset.CoreV1().Secrets(ns).Get(ctx, v.Name, metav1.GetOptions{})
+				if err != nil {
+					glog.Error(err)
+					return errors.Wrapf(err, "")
+				}
+
+				secret.Data[".dockerconfigjson"] = bs
+				_, err = k.clientset.CoreV1().Secrets(ns).Update(ctx, secret, metav1.UpdateOptions{})
+				if err != nil {
+					glog.Error(err)
+					return errors.Wrapf(err, "")
+				}
+			}
+			// 已存在 secret，直接返回
+			return nil
+		}
 	}
 
 	hs := &v1.Secret{
@@ -237,4 +249,15 @@ func (k *NamespaceWatcher) isWatchNamespace(ns string) bool {
 	}
 
 	return false
+}
+
+func (k *NamespaceWatcher) validate() error {
+	if k.clientset == nil {
+		return fmt.Errorf("kubernetes.Clientset is nil")
+	}
+	if k.imageCredentialInfo == nil {
+		return fmt.Errorf("imageCredentialInfo is nil")
+	}
+
+	return nil
 }

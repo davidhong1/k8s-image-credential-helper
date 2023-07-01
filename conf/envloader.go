@@ -7,9 +7,11 @@ import (
 )
 
 const (
+	envHTTPHealthCheckPort = "HTTP_HEALTH_CHECK_PORT"
+
 	// 私有仓库产品名，会体现在 secret docker-registry 名字中
 	// 比如 harbor
-	imageProvider = "IMAGE_PROVIDER"
+	envImageProvider = "IMAGE_PROVIDER"
 
 	envHost     = "IMAGE_HOST"
 	envUser     = "IMAGE_USER"
@@ -17,16 +19,23 @@ const (
 
 	envServiceAccounts = "SERVICE_ACCOUNTS"
 	envWatchNamespaces = "WATCH_NAMESPACES"
+
+	envForceUpdateSecret = "FORCE_UPDATE_SECRET"
 )
 
-var _ IImageCredentialInfoLoader = new(EnvImageCredentialInfoLoader)
+var _ IConfigLoader = new(EnvLoader)
 
-type EnvImageCredentialInfoLoader struct{}
+type EnvLoader struct{}
 
-func (e EnvImageCredentialInfoLoader) Load() (*ImageCredentialInfo, error) {
-	ip := strings.ToLower(strings.TrimSpace(os.Getenv(imageProvider)))
-	if ip == "" {
-		return nil, fmt.Errorf("please define env %s", imageProvider)
+func (e EnvLoader) Load() (*Config, error) {
+	httpHealthCheckPort := strings.ToLower(strings.TrimSpace(os.Getenv(envHTTPHealthCheckPort)))
+	if httpHealthCheckPort == "" {
+		httpHealthCheckPort = defaultHttpHealthCheckPort
+	}
+
+	iProvider := strings.ToLower(strings.TrimSpace(os.Getenv(envImageProvider)))
+	if iProvider == "" {
+		return nil, fmt.Errorf("please define env %s", envImageProvider)
 	}
 
 	host := strings.TrimSpace(os.Getenv(envHost))
@@ -53,6 +62,12 @@ func (e EnvImageCredentialInfoLoader) Load() (*ImageCredentialInfo, error) {
 		wns = defautWatchNamespace
 	}
 
+	forceUpdateSecret := false
+	fus := strings.ToLower(strings.TrimSpace(os.Getenv(envForceUpdateSecret)))
+	if fus == "1" || fus == "yes" || fus == "y" {
+		forceUpdateSecret = true
+	}
+
 	sasSps := strings.Split(sas, ",")
 	wnsSps := strings.Split(wns, ",")
 	for _, ns := range wnsSps {
@@ -62,13 +77,10 @@ func (e EnvImageCredentialInfoLoader) Load() (*ImageCredentialInfo, error) {
 		}
 	}
 
-	return &ImageCredentialInfo{
-		SecretName:      secretNamePrefix + ip,
-		Host:            host,
-		User:            user,
-		Password:        envPassword,
-		Email:           user + emailSuffix,
-		ServiceAccounts: sasSps,
-		WatchNamespaces: wnsSps,
+	return &Config{
+		initConfigFrom:      defaultInitConfig,
+		ForceUpdateSecret:   forceUpdateSecret,
+		HttpHealthCheckPort: httpHealthCheckPort,
+		ImageCredentialInfo: &ImageCredentialInfo{SecretName: secretNamePrefix + iProvider, Host: host, User: user, Password: envPassword, Email: user + emailSuffix, ServiceAccounts: sasSps, WatchNamespaces: wnsSps},
 	}, nil
 }

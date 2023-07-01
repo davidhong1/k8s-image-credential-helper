@@ -4,63 +4,44 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/davidhong1/k8s-image-credential-helper/conf"
 	"github.com/davidhong1/k8s-image-credential-helper/service"
 	"github.com/golang/glog"
 )
 
-const (
-	httpHealthCheckPort        = "HTTP_HEALTH_CHECK_PORT"
-	defaultHttpHealthCheckPort = "8080"
-
-	initConfig        = "INIT_CONFIG"
-	defaultInitConfig = "environment"
-)
-
 func main() {
 	ctx := context.Background()
-	var err error
 
-	ic := strings.TrimSpace(os.Getenv(initConfig))
-	if ic == "" {
-		ic = defaultInitConfig
+	config, err := conf.InitConfig()
+	if err != nil {
+		glog.Fatal("Init config fail.", err)
 	}
 
-	var ici *conf.ImageCredentialInfo
-
-	switch ic {
-	case defaultInitConfig:
-		envLoader := conf.EnvImageCredentialInfoLoader{}
-		ici, err = envLoader.Load()
-		if err != nil {
-			glog.Fatal(err.Error())
+	nsWatcher, err := service.InitNamespaceWatcher(ctx, config)
+	if err != nil {
+		glog.Fatal(err)
+	}
+	go func(ctx context.Context) {
+		startWatchNum := 1
+		for {
+			if startWatchNum > 1 {
+				glog.Info("watcher.ResultChan is closed, start new watcher, startWatchNum: %d", startWatchNum)
+			}
+			err := nsWatcher.Watch(ctx)
+			if err != nil {
+				glog.Fatal(err)
+			}
+			nsWatcher.ForceUpdateSecret = false
+			startWatchNum++
 		}
-	}
-	if ici == nil {
-		glog.Fatal("ImageCredentialInfo is nil")
-	}
+	}(ctx)
 
-	namespaceWatcher, err := service.InitNamespaceWatcher(ctx, ici)
-	if err != nil {
-		glog.Fatal(err)
-	}
-	err = namespaceWatcher.Watch(context.Background())
-	if err != nil {
-		glog.Fatal(err)
-	}
-
-	// 监听健康检查接口
-	httpPort := strings.TrimSpace(os.Getenv(httpHealthCheckPort))
-	if httpPort == "" {
-		httpPort = defaultHttpHealthCheckPort
-	}
+	// add http health check api /pong
 	http.HandleFunc("/pong", pongHandler)
-	err = http.ListenAndServe(":"+httpPort, nil)
+	err = http.ListenAndServe(":"+config.HttpHealthCheckPort, nil)
 	if err != nil {
-		glog.Fatal("init health http failed. err: %v", err)
+		glog.Fatal("Init health http failed. err: %v", err)
 	}
 }
 
