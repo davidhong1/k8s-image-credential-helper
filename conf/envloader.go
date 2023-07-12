@@ -81,6 +81,14 @@ func (e EnvLoader) Load() (*Config, error) {
 		initConfigFrom:      defaultInitConfig,
 		ForceUpdateSecret:   forceUpdateSecret,
 		HttpHealthCheckPort: httpHealthCheckPort,
-		ImageCredentialInfo: &ImageCredentialInfo{SecretName: secretNamePrefix + iProvider, Host: host, User: user, Password: envPassword, Email: user + emailSuffix, ServiceAccounts: sasSps, WatchNamespaces: wnsSps},
+		ImageCredentialInfo: &ImageCredentialInfo{
+			SecretName:      secretNamePrefix + iProvider,
+			Host:            host,
+			User:            user,
+			Password:        envPassword,
+			Email:           user + emailSuffix,
+			ServiceAccounts: sasSps,
+			WatchNamespaces: wnsSps,
+		},
 	}, nil
 }

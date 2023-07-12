@@ -48,7 +48,6 @@ func InitNamespaceWatcher(ctx context.Context, config *conf.Config) (*NamespaceW
 func (k *NamespaceWatcher) Watch(ctx context.Context) error {
 	if err := k.validate(); err != nil {
 		glog.Error(err)
-		// TODO 检查 errors wrap 情况
 		return errors.Wrapf(err, "")
 	}
 
@@ -84,7 +83,6 @@ func (k *NamespaceWatcher) Watch(ctx context.Context) error {
 				err := k.createCredential(ctx, namespace.Name)
 				if err != nil {
 					glog.Error(err)
-					// TODO 发送通知
 				}
 			case watch.Deleted:
 				glog.Infof("Watch namespace %s deleted", namespace.Name)
@@ -131,7 +129,12 @@ func (k *NamespaceWatcher) createSecret(ctx context.Context, ns string) error {
 		return errors.Wrap(err, "")
 	}
 
-	bs, err := dockerConfigJsonKeyBytes(k.imageCredentialInfo.Host, k.imageCredentialInfo.User, k.imageCredentialInfo.Password, k.imageCredentialInfo.Email)
+	bs, err := dockerConfigJsonKeyBytes(
+		k.imageCredentialInfo.Host,
+		k.imageCredentialInfo.User,
+		k.imageCredentialInfo.Password,
+		k.imageCredentialInfo.Email,
+	)
 	if err != nil {
 		glog.Error(err)
 		return errors.Wrap(err, "")

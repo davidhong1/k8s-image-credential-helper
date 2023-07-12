@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	initConfig        = "INIT_CONFIG"
+	envInitConfig     = "INIT_CONFIG"
 	defaultInitConfig = "environment"
 
 	// 默认给 default serviceaccount 配置 imagePullSecrets
@@ -57,7 +57,7 @@ func (c Config) print() {
 
 func InitConfig() (*Config, error) {
 	var err error
-	ic := strings.TrimSpace(os.Getenv(initConfig))
+	ic := strings.TrimSpace(os.Getenv(envInitConfig))
 	if ic == "" {
 		ic = defaultInitConfig
 	}
