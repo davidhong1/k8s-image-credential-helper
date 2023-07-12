@@ -59,7 +59,7 @@ func InitConfig() (*Config, error) {
 	var err error
 	ic := strings.TrimSpace(os.Getenv(envInitConfig))
 	if ic == "" {
-		ic = defaultInitConfig
+		return nil, fmt.Errorf("please define env %s", envInitConfig)
 	}
 
 	var ici *Config
