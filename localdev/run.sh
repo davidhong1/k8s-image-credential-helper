@@ -1,5 +1,5 @@
 export INIT_CONFIG=environment
-export IMAGE_PROVIDER=harbor
+export IMAGE_PROVIDER=Harbor
 export IMAGE_HOST=myharbor.io
 export IMAGE_USER=xxx
 export IMAGE_PASSWORD=xxx

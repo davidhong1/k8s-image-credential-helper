@@ -1,4 +1,4 @@
-# k8s-image-credential-helper
+# K8S Image Credential Helper
 在 Namespace 维度配置 pod 拉取私有镜像的权限
 
 参考:
@@ -24,9 +24,9 @@
 
 |环境变量名|是否必填|默认值|
 |----|----|----|
-|INIT_CONFIG|Yes|environment 表示从环境变量读取配置|
+|INIT_CONFIG|Yes|比如 environment 表示从环境变量读取配置|
 |HTTP_HEALTH_CHECK_PORT|No|8080|
-|IMAGE_PROVIDER|Yes|harbor|
+|IMAGE_PROVIDER|Yes|比如 Harbor|
 |IMAGE_HOST|Yes||
 |IMAGE_USER|Yes||
 |IMAGE_PASSWORD|Yes||
@@ -40,18 +40,14 @@ Harbor + 环境变量配置例子见 deploy/all.yaml
 # Pod 如何使用 Image credential
 
 Pod 需要和授权了 Image credential 的 ServiceAccounts 进行绑定；
-或者对应 Deployment & StatefulSet & DaemonSets 和授权了 Image credential 的 ServiceAccounts 进行绑定。
+或者对应 Deployment | StatefulSet | DaemonSets 和授权了 Image credential 的 ServiceAccounts 进行绑定。
 
-# 具体实现
+# How to work
 
-监听 ns 创建，在新 ns 上面创建 secret docker-registry，绑定 secret docker-registry 给指定服务账号。
+监听集群中 Namespaces 创建事件，在新 Namespaces 上面创建  docker-registry secret，然后绑定 secret docker-registry 给指定的服务账号。最后 pod 使用上指定的服务账号，pod 即可拉取私有镜像。
 
-pod 使用上指定的服务账号
+# k8s RBAC 说明
 
-## 流程图
-
-
-## k8s RBAC 说明
 
 # 快速部署
 

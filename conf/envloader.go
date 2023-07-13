@@ -10,7 +10,7 @@ const (
 	envHTTPHealthCheckPort = "HTTP_HEALTH_CHECK_PORT"
 
 	// 私有仓库产品名，会体现在 secret docker-registry 名字中
-	// 比如 harbor
+	// 比如 Harbor
 	envImageProvider = "IMAGE_PROVIDER"
 
 	envHost     = "IMAGE_HOST"

@@ -94,7 +94,7 @@ spec:
         - name: HTTP_HEALTH_CHECK_PORT
           value: "8080"
         - name: IMAGE_PROVIDER 
-          value: harbor
+          value: Harbor
         - name: IMAGE_HOST
           value: myharbor.io
         - name: IMAGE_USER
